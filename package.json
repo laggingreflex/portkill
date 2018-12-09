@@ -1,0 +1,8 @@
+{
+  "name": "portkill",
+  "version": "0.0.0",
+  "description": "Kill process by port number",
+  "main": "index.js",
+  "bin": "index.js",
+  "repository": "laggingreflex/portkill"
+}
