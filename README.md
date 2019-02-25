@@ -21,5 +21,5 @@ portkill [...port(s)]
 ```js
 const portkill = require('portkill')
 
-await portkill(ports, opts)
+portkill(ports, opts)
 ```

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-const pid = require('port-pid');
+const os = require('os');
+const { execSync } = require('child_process');
+
+const isWin = os.platform() === 'win32';
 
 module.exports = portKill;
 if (!module.parent) cli();
@@ -8,25 +11,23 @@ if (!module.parent) cli();
 /**
  * @param {number|Array<number>} port(s)
  * @param {object} [options]
- * @param {string<"all"|"tcp"|"udp">} [options.type=all]
  * @param {string} [options.signal]
- * @param {function} [options.kill=process.kill]
  * @param {boolean} [options.verbose=false]
  */
 function portKill(ports, {
-  type = 'all',
   signal,
-  kill = process.kill.bind(process),
   verbose = false,
 } = {}) {
   if (!Array.isArray(ports) && isNaN(ports)) throw new Error(`Need a port`);
-  if (kill === 'tree') kill = treeKill;
-  if (typeof kill !== 'function') throw new Error('Invalid `opts.kill`, needs to be a function');
   if (verbose) console.log('Finding PIDs with port:', ...ports);
-  return Promise.all(arrify(ports).map(pid)).then(pids => Promise.all(pids.map((pids) => (pids && pids[type] || []).map(pid => {
+  return Promise.all(arrify(ports).map(pid)).then(pids => flat(pids).map(pid => {
     if (verbose) console.log(`Killing PID<${pid}>`);
-    kill(pid, signal);
-  }))));
+    try {
+      process.kill(pid, signal);
+    } catch (error) {
+      console.error(error);
+    }
+  }));
 }
 
 function argv(argv = process.argv.slice(2)) {
@@ -38,8 +39,11 @@ function argv(argv = process.argv.slice(2)) {
 
 function cli() {
   const { ports, opts } = argv();
-  if (!ports.length) return error('Need a port');
-  portKill(ports, Object.assign({ verbose: true }, opts)).catch(exit);
+  if (!ports.length) return exit('Need a port');
+  portKill(ports, Object.assign({ verbose: true }, opts)).then(portsKilled => {
+    if (portsKilled.length) console.log(`${portsKilled.length} processes killed`);
+    else console.log('No processes found');
+  }).catch(exit);
 }
 
 function exit(message, code = 1) {
@@ -49,4 +53,21 @@ function exit(message, code = 1) {
 
 function arrify(input) {
   return (Array.isArray(input) ? input : [input]).filter(Boolean);
+}
+
+function flat(arr) {
+  return arr.reduce((acc, val) => Array.isArray(val) ? acc.concat(flat(val)) : acc.concat(val), []);
+}
+
+function pid(port) {
+  try {
+    const command = (isWin
+      ? 'netstat.exe -ano | findstr.exe :'
+      : 'lsof -i :') + port;
+    const output = execSync(command, { encoding: 'utf8' }).trim().split(/[\n\r]+/g).map(s => s.trim()).filter(Boolean).map(line => line.split(/[ ]+/g));
+    const pids = output.map(line => isWin ? line.pop() : (line.shift(), line.shift()));
+    return Array.from(new Set(pids));
+  } catch (error) {
+    return [];
+  }
 }
